@@ -1,0 +1,7 @@
+THINGS TO DO:
+- Optimize worker and client pool structs and functions
+
+1. Job queues are used to outsource tasks (unprocessed payload --> server --> worker thread --> required output)
+2. They absorb traffic spikes by delegating work to multiple worker
+3. Robust and fault tolerant (if a worker dies, task is sent to the job queue)
+4. We will be using dynamic arrays instead of linked lists for faster retrieval and cache optimization
