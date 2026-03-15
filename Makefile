@@ -1,20 +1,33 @@
-CC     = gcc
-FLAGS  = -pthread -Wall -fsanitize=address -g
+CC = gcc
+CFLAGS = -Wall -g -pthread -fsanitize=address
+
+# Source files
+SERVER_SRC = src/server.c src/handlers/client_handler.c src/handlers/worker_handler.c \
+             src/handlers/dispatcher.c src/handlers/health_check_handler.c \
+             util/sync.c lib/job_queue.c lib/client_pool.c lib/worker_pool.c util/socket.c
+
+CLIENT_SRC = src/client.c util/socket.c
+WORKER_SRC = src/worker.c util/socket.c
+
+# Object files
+SERVER_OBJS = $(SERVER_SRC:.c=.o)
+CLIENT_OBJS = $(CLIENT_SRC:.c=.o)
+WORKER_OBJS = $(WORKER_SRC:.c=.o)
 
 all: server client worker
 
-server: src/server.c src/client_handler.c src/worker_handler.c src/dispatcher.c \
-        lib/socket.c lib/job_queue.c lib/client_pool.c lib/worker_pool.c \
-        util/sync.c util/health_check_handler.c
-	$(CC) $(FLAGS) -o server src/server.c src/client_handler.c src/worker_handler.c \
-	src/dispatcher.c lib/socket.c lib/job_queue.c lib/client_pool.c lib/worker_pool.c \
-	util/sync.c util/health_check_handler.c
+# Pattern rule for object files
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-client: src/client.c lib/socket.c
-	$(CC) $(FLAGS) -o client src/client.c lib/socket.c
+server: $(SERVER_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(SERVER_OBJS)
 
-worker: src/worker.c lib/socket.c
-	$(CC) $(FLAGS) -o worker src/worker.c lib/socket.c
+client: $(CLIENT_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(CLIENT_OBJS)
+
+worker: $(WORKER_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(WORKER_OBJS)
 
 clean:
-	rm -f server client worker
+	rm -f server client worker *.o

@@ -3,7 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
-#include "../lib/socket.h"
+#include "../util/socket.h"
 
 pthread_mutex_t job_mutex = PTHREAD_MUTEX_INITIALIZER;
 int known_jobs[100];

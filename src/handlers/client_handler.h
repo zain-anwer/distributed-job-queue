@@ -10,9 +10,9 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include "../lib/job_queue.h"
-#include "../lib/client_pool.h"
-#include "../util/sync.h"
+#include "../../lib/job_queue.h"
+#include "../../lib/client_pool.h"
+#include "../../util/sync.h"
 
 #define BUFFER_SIZE 1024
 #define RESPONSE_SIZE 1024

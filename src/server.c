@@ -2,14 +2,17 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <unistd.h>
+
 #include "../lib/job_queue.h"
-#include "../lib/socket.h"
 #include "../lib/client_pool.h"
 #include "../lib/worker_pool.h"
-#include "../util/health_check_handler.h"
-#include "client_handler.h"
-#include "worker_handler.h"
-#include "dispatcher.h"
+
+#include "handlers/health_check_handler.h"
+#include "handlers/client_handler.h"
+#include "handlers/worker_handler.h"
+#include "handlers/dispatcher.h"
+
+#include "../util/socket.h"
 #include "../util/sync.h"
 
 int main()

@@ -2,9 +2,9 @@
 #define HEALTH_CHECK_HANDLER_H
 
 #include <unistd.h>
-#include "../lib/worker_pool.h"
-#include "../lib/job_queue.h"
-#include "sync.h"
+#include "../../lib/worker_pool.h"
+#include "../../lib/job_queue.h"
+#include "../../util/sync.h"
 
 extern struct JobQueue job_queue;
 extern struct Job* registry[MAX_JOB_NUM];

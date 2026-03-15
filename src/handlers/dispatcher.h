@@ -4,11 +4,11 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <unistd.h>
-#include "../lib/job_queue.h"
-#include "../lib/socket.h"
-#include "../lib/client_pool.h"
-#include "../lib/worker_pool.h"
-#include "../util/sync.h"
+#include "../../lib/job_queue.h"
+#include "../../util/socket.h"
+#include "../../lib/client_pool.h"
+#include "../../lib/worker_pool.h"
+#include "../../util/sync.h"
 
 extern sem_t queue_mutex;
 extern sem_t empty;

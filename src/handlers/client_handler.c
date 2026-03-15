@@ -71,6 +71,13 @@ void* client_handler(void* arg) {
         // flushing the buffer to prevent stale reads
         memset(buffer, 0, sizeof(buffer));
     }
+
+    sem_wait(&client_mutex);
+    ClientPool_Remove(&client_pool,fd);
+    sem_post(&client_mutex);
+
+    printf("REMOVED CLIENT -> (client_fd: %d)\n",fd);
+    fflush(stdout);
 }
 
 

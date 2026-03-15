@@ -3,10 +3,9 @@
 
 #include <unistd.h>
 #include <string.h>
-#include "../lib/worker_pool.h"
-#include "../lib/job_queue.h"
-#include "../util/sync.h"
-
+#include "../../lib/worker_pool.h"
+#include "../../lib/job_queue.h"
+#include "../../util/sync.h"
 
 extern sem_t registry_mutex;
 extern sem_t worker_mutex;
