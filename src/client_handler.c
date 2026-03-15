@@ -9,6 +9,7 @@
 void* client_handler(void* arg) {
     
     int fd = (*(int*)arg);
+    free(arg);
     char buffer[BUFFER_SIZE];
 
     ClientPool_Add(&client_pool,createClient(fd,true));

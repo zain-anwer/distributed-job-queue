@@ -7,6 +7,7 @@ void* worker_handler(void* arg)
     fflush(stdout);
 
     int fd = *((int*) arg);
+    free(arg);
 
     int v1, v2, v3, v4, v5;
     sem_getvalue(&worker_mutex,     &v1);
@@ -158,13 +159,20 @@ void* worker_handler(void* arg)
         memset(buffer,0,sizeof(buffer));
     }
 
+    if (registry == NULL)
+    {
+        printf("Registry data structure uninitialized\n");
+        fflush(stdout);
+        return;
+    }
+
     sem_wait(&registry_mutex);
 
     int i;
     
     for (i = 0 ; i < MAX_JOB_NUM ; i++)
     {
-        if (registry[i] && registry[i]->worker_fd == fd && registry[i]->status == JOB_IN_PROGRESS)
+        if (registry[i] != NULL && registry[i]->worker_fd == fd && registry[i]->status == JOB_IN_PROGRESS)
         {
             sem_wait(&queue_mutex);
          
@@ -180,6 +188,15 @@ void* worker_handler(void* arg)
     }
 
     sem_post(&registry_mutex);
+
+    sem_wait(&workers_available);
+
+    sem_wait(&worker_mutex);
+    WorkerPool_Remove(&worker_pool,fd);
+    sem_post(&worker_mutex);
+
+    printf("WORKER REMOVED -> (worker_id : %d) (worker_fd : %d)\n",worker_id,fd);
+    fflush(stdout);
 
     close(fd);
 }

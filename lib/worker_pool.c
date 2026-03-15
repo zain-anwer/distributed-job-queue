@@ -44,7 +44,6 @@ void WorkerPool_Remove(struct WorkerPool* pool, int worker_fd)
         if (pool->workers[i].fd != worker_fd)
             WorkerPool_Add(new_pool,pool->workers[i]);
     }
-
     free(pool->workers);
     *pool = *new_pool;
     free(new_pool);

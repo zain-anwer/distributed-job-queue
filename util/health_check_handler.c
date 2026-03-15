@@ -16,16 +16,22 @@ void* health_check(void* arg)
         {
             if (time(NULL) - (worker_pool.workers[i].last_heartbeat) > 15)
             {
-                sem_wait(&queue_mutex);
+
                 sem_wait(&registry_mutex);
 
                 worker_pool.workers[i].status = WORKER_OFFLINE;
-                struct Job* job = find_job_by_worker_fd(registry,worker_pool.workers[i].fd);               
-                job->status = JOB_PENDING;
-                enqueue(&job_queue,job);
-            
+                struct Job* job = find_job_by_worker_fd(registry,worker_pool.workers[i].fd);   
+                
+                if (job != NULL)
+                {
+                    sem_wait(&queue_mutex);
+                    job->status = JOB_PENDING;
+                    enqueue(&job_queue,job); 
+                    sem_post(&queue_mutex);
+                
+                }                
+               
                 sem_post(&registry_mutex);
-                sem_post(&queue_mutex);
             
             }
         }
