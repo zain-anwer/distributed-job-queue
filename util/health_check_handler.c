@@ -1,23 +1,10 @@
-#include "../lib/worker_pool.c"
-#include "../lib/job_queue.c"
-#include "sync.c"
-
-extern struct JobQueue job_queue;
-extern struct Job* registry[MAX_JOB_NUM];
-extern sem_t worker_mutex;
-extern sem_t workers_available;
-
-
-extern struct WorkerPool worker_pool;
-extern struct Job* registry[MAX_JOB_NUM];
-extern struct JobQueue job_queue;
-
+#include "health_check_handler.h"
 
 /* if a worker is unresponsive for 15 seconds mark it offline and remove job */
 
 void* health_check(void* arg)
 {
-    Sleep(5);
+    sleep(5);
 
     while (true)
     {
@@ -41,8 +28,7 @@ void* health_check(void* arg)
                 sem_post(&queue_mutex);
             
             }
-
-            sem_post(&worker_mutex);
         }
+        sem_post(&worker_mutex);
     }
 }

@@ -1,25 +1,21 @@
+#include <unistd.h>
 #include <stdbool.h>
 #include <pthread.h>
 #include <unistd.h>
-#include "../lib/job_queue.c"
+#include "../lib/job_queue.h"
 #include "../lib/socket.h"
-#include "../lib/client_pool.c"
-#include "../lib/worker_pool.c"
-#include "client.c"
-
-extern sem_t queue_mutex;
-extern sem_t empty;
-extern sem_t full;
-extern sem_t worker_mutex;
-extern sem_t workers_available;
-
-extern worker_pool;
-extern job_queue;
-
-void* dispatch_jobs(void* arg);
+#include "../lib/client_pool.h"
+#include "../lib/worker_pool.h"
+#include "../util/health_check_handler.h"
+#include "client_handler.h"
+#include "worker_handler.h"
+#include "dispatcher.h"
+#include "../util/sync.h"
 
 int main()
 {
+	setvbuf(stdout, NULL, _IONBF, 0); // disable buffering
+
 	/* initialization of synchronization locks for producer-consumer behaviour */
 
     sync_init(MAX_JOB_NUM);
@@ -33,62 +29,66 @@ int main()
 
 	/* defining backlog (number of clients waiting to be serviced) as 10 for now */
 	
-	listen (socket_fd,10);
+	listen(socket_fd,10);
 
 	pthread_t dispatcher_thread;
+	pthread_t health_checker_thread;
+
+	/* these threads will continue to run in the background regardless of connections */
+
 	pthread_create(&dispatcher_thread,NULL,dispatch_jobs,NULL);
+	pthread_detach(dispatcher_thread);
+	pthread_create(&health_checker_thread,NULL,health_check,NULL);
+	pthread_detach(health_checker_thread);
+
+	/* differentiate between clients and workers connecting through handshake */
+
+	char handshake[1024];
 
 	while (true)
 	{
 		struct sockaddr clientAddress;
 		socklen_t clientAddressSize = sizeof(clientAddress);
 		
-		int client_socket_fd = accept(socket_fd,&clientAddress,&clientAddressSize);
+		int* conn_fd = (int*) malloc(sizeof(int));
+		*conn_fd = accept(socket_fd,&clientAddress,&clientAddressSize);
 
-        ClientPool_Add(&client_pool,createClient(client_socket_fd,true));
+		pthread_t handler;
 
-		pthread_t tid;
+		read(*conn_fd,handshake,sizeof(handshake));
 
-		int* fd = (int*) malloc (sizeof(int));
-		*fd = client_socket_fd;
-		pthread_create(&tid,NULL,client_handler,(void*)fd);
+		if (strncmp(handshake,"CLIENT",6) == 0)
+		{
+			pthread_create(&handler,NULL,client_handler,(void*)conn_fd);
+			pthread_detach(handler);
+			printf("CLIENT HANDSHAKE - CONNECTION ESTABLISHED\n");
+		}
+
+		else if (strncmp(handshake,"WORKER",6) == 0)
+		{
+			pthread_create(&handler,NULL,worker_handler,(void*)conn_fd);
+			pthread_detach(handler);
+			printf("WORKER HANDSHAKE - CONNECTION ESTABLISHED\n");
+		}
+
+		else 
+		{
+			printf("ERROR: UNKNOWN CONNECTION/HANDSHAKE\n");
+			fflush(stdout);
+			close(*conn_fd);
+			free(conn_fd);
+		}
+
+		fflush(stdout);
+		memset(handshake,0,sizeof(handshake));
+		
 	}
-	
 	shutdown(socket_fd,SHUT_RDWR);
 	sem_destroy(&queue_mutex);
 	sem_destroy(&empty);
 	sem_destroy(&full);
-	
+	sem_destroy(&worker_mutex);
+	sem_destroy(&workers_available);
 	return 0;
 }
 
-/* dispatcher thread handler --- consumer part */
-
-void* dispatch_jobs(void* arg)
-{
-	sem_wait(&full);
-	sem_wait(&queue_mutex);
-	sem_wait(&workers_available);
-
-	struct Job* job = dequeue(job_queue);
-	
-	sem_wait(&worker_mutex);
-
-	/* getting idle worker here to assign a job (evil capitalistic smile) */
-	/* try to wait here for a while rather than just giving uppp */
-
-	struct Worker* worker = findIdleWorker(worker_pool);
-
-	worker->status = WORKER_BUSY;
-	job->status = JOB_IN_PROGRESS;
-	job->worker_fd = worker->fd;
-
-	sem_post(&queue_mutex);
-	sem_post(&worker_mutex);
-
-	char msg[1100];
-	snprintf(msg, sizeof(msg), "JOB %d %s\n", job->job_id, job->payload);
-    write(worker->fd, msg, strlen(msg));
-
-	/* simulate whatever at the worker's end for job resolution */
-}

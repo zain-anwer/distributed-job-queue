@@ -1,4 +1,4 @@
-#include <semaphore.h>
+#include "sync.h"
 
 sem_t queue_mutex;
 sem_t registry_mutex;
@@ -6,6 +6,8 @@ sem_t empty;
 sem_t full;
 sem_t worker_mutex;
 sem_t workers_available;
+sem_t client_mutex;
+
 
 void sync_init(int queue_size)
 {
@@ -19,4 +21,7 @@ void sync_init(int queue_size)
 
 	/* worker mutex to access and write to worker pool */
 	sem_init(&worker_mutex,0,1);
+
+	/* client mutex to access and write to the client pool */
+	sem_init(&client_mutex,0,1);
 }

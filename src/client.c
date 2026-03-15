@@ -1,88 +1,130 @@
-// clients submit jobs that get assigned to workers by the central server
-// clients can give two commands (submit and status) to get an equivalent response
-// client handler thread
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../lib/job_queue.c"
-#include "../util/sync.c"
+#include <unistd.h>
+#include <pthread.h>
+#include "../lib/socket.h"
 
-#define BUFFER_SIZE 1024
-#define RESPONSE_SIZE 1024
-#define ACK_SIZE 64
+pthread_mutex_t job_mutex = PTHREAD_MUTEX_INITIALIZER;
+int known_jobs[100];
+int num_jobs = 0;
 
-extern job_queue;
-extern registry;
-extern jobs_registered;
+void* notif_listener(void* arg);
 
+int main(int argc, char** argv)
+{
+    setvbuf(stdout, NULL, _IONBF, 0); // disable buffering
 
-extern sem_t queue_mutex;
-extern sem_t empty;
-extern sem_t full;
+    char ip[20] = "127.0.0.1";
+    int port_num = 2000;
 
-
-/* the following program will be the producer (populate the queue) */
-
-void* client_handler(void* arg) {
-    
-    int fd = (*(int*)arg);
-    char buffer[BUFFER_SIZE];
-
-    // as long as the connection isn't closed
-
-    while(read(fd,buffer,sizeof(buffer)) > 0)     
-    {
-        if (strncmp(buffer,"SUBMIT ",7) == 0) {
-           
-            struct Job* new_job = malloc(sizeof(struct Job));
-            Job_init(new_job);
-            new_job->client_fd = fd;
-            strncpy(new_job->payload, buffer + 7, sizeof(new_job->payload) - 1);
-            registry[jobs_registered++] = new_job;
-            
-            sem_wait(&empty);
-            sem_wait(&queue_mutex);
-            
-            enqueue(&job_queue, new_job);
-            
-            sem_post(&queue_mutex);
-            sem_post(&full);
-
-            /* sending an acknowledgment */
-
-            char ack[ACK_SIZE];
-            snprintf(ack,ACK_SIZE,"JOB SUBMITTED - JOB ID: %d\n",new_job->job_id);
-            write(fd,ack,strlen(ack));
-        }
-        
-        else if (strncmp(buffer,"STATUS ",7) == 0) {
-
-            char response[RESPONSE_SIZE];
-            
-            int job_id = atoi(buffer + 7);
-            struct Job* rel_job = find_job_by_id(registry,job_id);
-            
-            if (rel_job == NULL)
-                snprintf(response,sizeof(response),"ERROR: JOB NOT FOUND\n");
-            
-            else {
-                if (rel_job->status == JOB_PENDING)
-                    snprintf(response,sizeof(response),"STATUS: JOB_PENDING\n");
-                else if (rel_job->status == JOB_IN_PROGRESS)
-                    snprintf(response,sizeof(response),"STATUS: JOB_IN_PROGRESS\n");
-                else if (rel_job->status == JOB_COMPLETED)
-                    snprintf(response,sizeof(response),"STATUS: JOB_COMPLETED\n");
-                else if (rel_job->status == JOB_FAILED)
-                    snprintf(response,sizeof(response),"STATUS: JOB_FAILED\n");
-            }
-            
-            write(fd,response,strlen(response));
-
-        }
-        // flushing the buffer to prevent stale reads
-        memset(buffer, 0, sizeof(buffer));
+    if (argc >= 3) {
+        strcpy(ip, argv[1]);
+        port_num = atoi(argv[2]);
     }
+
+    int client_fd = createTCPIpv4Socket();
+    struct sockaddr* address = createTCPIpv4SocketAddress(ip, port_num);
+
+    if (connect(client_fd, address, sizeof(*address)) == 0)
+        printf("Connection Successful\n");
+    else {
+        fprintf(stderr, "[CLIENT] Failed to connect to broker\n");
+        exit(1);
+    }
+
+    write(client_fd, "CLIENT", 6);
+
+    pthread_t notif_handler;
+    pthread_create(&notif_handler, NULL, notif_listener, (void*)&client_fd);
+
+    char message[1000];
+    char request[1024];
+    char choice[5];
+
+    while (1) {
+        printf("== OPTIONS ==\n");
+        printf("1. Submit Job\n");
+        printf("2. Get Job Status\n");
+
+        fgets(choice, sizeof(choice), stdin);
+        choice[strcspn(choice, "\n")] = 0;    // strip newline
+
+        if (atoi(choice) != 1 && atoi(choice) != 2) {
+            printf("Invalid Choice!\n");
+            continue;
+        }
+
+        if (atoi(choice) == 1) {
+            printf("Enter job payload: ");
+            fgets(message, sizeof(message), stdin);
+            message[strcspn(message, "\n")] = 0;    // strip newline
+            snprintf(request, sizeof(request), "SUBMIT %s\n", message);
+        }
+        else {
+            char job_id[10];
+
+            printf("[CLIENT] Your job IDs so far: ");
+            pthread_mutex_lock(&job_mutex);
+            for (int i = 0; i < num_jobs; i++)
+                printf("%d ", known_jobs[i]);
+            pthread_mutex_unlock(&job_mutex);
+            printf("\n");
+
+            printf("Enter job ID: ");
+            fgets(job_id, sizeof(job_id), stdin);
+            job_id[strcspn(job_id, "\n")] = 0;      // strip newline
+
+            int id_found = 0;
+            pthread_mutex_lock(&job_mutex);
+            for (int i = 0; i < num_jobs; i++)
+                if (known_jobs[i] == atoi(job_id))
+                    id_found = 1;
+            pthread_mutex_unlock(&job_mutex);
+
+            if (!id_found) {
+                printf("Invalid Entry\n");
+                continue;                            // no need to memset, request unused
+            }
+
+            snprintf(request, sizeof(request), "STATUS %s\n", job_id);
+        }
+
+        write(client_fd, request, strlen(request));
+        memset(request, 0, sizeof(request));
+        memset(message, 0, sizeof(message));
+    }
+
+    return 0;
 }
 
+void* notif_listener(void* arg)
+{
+    int fd = *((int*)arg);
+    char notification[1024];
 
+    while (read(fd, notification, sizeof(notification)) > 0) {
+        int job_id;
+        printf("NOTIFICATION: %s", notification);
+
+        if (strncmp(notification, "ACK", 3) == 0) {
+            sscanf(notification, "ACK\nJOB SUBMITTED - JOB ID: %d\n", &job_id);
+            pthread_mutex_lock(&job_mutex);
+            known_jobs[num_jobs++] = job_id;
+            pthread_mutex_unlock(&job_mutex);
+
+            printf("[CLIENT] Your job IDs so far: ");
+            pthread_mutex_lock(&job_mutex);
+            for (int i = 0; i < num_jobs; i++)
+                printf("%d ", known_jobs[i]);
+            pthread_mutex_unlock(&job_mutex);
+            printf("\n");
+        }
+        fflush(stdout);
+        memset(notification, 0, sizeof(notification));
+    }
+
+    // Broker disconnected
+    printf("[CLIENT] Connection to broker lost\n");
+    exit(1);
+}

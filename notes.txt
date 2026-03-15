@@ -5,3 +5,12 @@ THINGS TO DO:
 2. They absorb traffic spikes by delegating work to multiple worker
 3. Robust and fault tolerant (if a worker dies, task is sent to the job queue)
 4. We will be using dynamic arrays instead of linked lists for faster retrieval and cache optimization
+
+
+RANDOM INFORMATION: 
+
+| Destination        | Buffering Mode                               |
+| ------------------ | -------------------------------------------- |
+| Terminal / console | **Line-buffered** (flush on `\n`)            |
+| File / pipe        | **Fully-buffered** (flush when buffer fills) |
+| Manual flush       | **Flushed immediately**                      |

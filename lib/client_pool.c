@@ -1,20 +1,10 @@
-#include <stdio.h>
-#include <time.h>
-#include <stdlib.h>
-#include <netinet/in.h>
-#include <stdbool.h>
+#include "client_pool.h"
+
+int curr_client_id = 1;
+struct ClientPool client_pool = {.clients = NULL, .num_clients = 0};
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* ----------------------------------- CLIENT STRUCT ---------------------------------------- */
-
-int curr_client_id = 1; 
-
-struct Client {
-    int fd;
-    int client_id;
-    char ip_address[INET_ADDRSTRLEN];  // IPV4 address length
-    int port_number;
-    bool connected;
-};
 
 struct Client createClient(int fd, bool connected) {
     struct Client client = {.client_id = curr_client_id++,.fd = fd,.connected = connected};
@@ -22,11 +12,6 @@ struct Client createClient(int fd, bool connected) {
 }
 
 /* ----------------------------- CLIENT POOL STRUCT ----------------------------------------- */
-
-struct ClientPool {
-    struct Client* clients;
-    int num_clients;
-};
 
 void ClientPool_init(struct ClientPool* pool) {
     pool->clients = NULL;
@@ -63,7 +48,3 @@ void ClientPool_Remove(struct ClientPool* pool, int client_fd)
     *pool = *new_pool;
     free(new_pool);
 }
-
-/* global client pool instance that should be declared using extern globally in files that import it */
-
-struct ClientPool client_pool;

@@ -1,41 +1,18 @@
-#include <stdio.h>
-#include <time.h>
-#include <stdlib.h>
-#include <stdbool.h>
+#include "worker_pool.h"
 
 int curr_worker_id = 1;
+struct WorkerPool worker_pool = {.workers = NULL, .num_workers = 0};
 
-/* ----------------------------- Worker Struct & Functions -----------------------------------*/
-
-typedef enum {
-    WORKER_IDLE,
-    WORKER_BUSY,
-    WORKER_OFFLINE
-} WorkerStatus;
-
-struct Worker {
-    int          fd;
-    int          worker_id;
-    WorkerStatus status;
-    int          jobs_completed;    // stat for dashboard
-    int          jobs_failed;       // stat for dashboard
-    time_t       last_heartbeat;    // stat for dashboard (computing health apparently)
-};
-
+/* ----------------------------- Worker Struct Functions -----------------------------------*/
 
 struct Worker createWorker(int fd) {
     struct Worker worker = {fd,curr_worker_id++,WORKER_IDLE,0,0,time(NULL)};
+    return worker;
 }
 
 /* ------------------------------------------------------------------------------------------ */
 
-/* ----------------------------- Worker Pool Struct & Functions ------------------------------*/
-
-
-struct WorkerPool {
-    struct Worker* workers;
-    int num_workers;
-};
+/* ----------------------------- Worker Pool Struct Functions ------------------------------*/
 
 void WorkerPool_init(struct WorkerPool* pool) {
     pool->workers = NULL;
@@ -84,6 +61,13 @@ struct Worker* findIdleWorker(struct WorkerPool* pool) {
     return NULL;
 }
 
-/* global worker pool instance that should be declared using extern globally in files that import it */
-
-struct WorkerPool worker_pool;
+struct Worker* findWorkerByFd(struct WorkerPool* pool,int fd) {
+    
+    int i;
+    for (i = 0; i < pool->num_workers ; i++)
+    {
+        if (pool->workers[i].fd == fd)
+            return &pool->workers[i];
+    }
+    return NULL;
+}
