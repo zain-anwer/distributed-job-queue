@@ -1,82 +1,124 @@
 #include "dashboard_handler.h"
 
 void* dashboard(void* arg) {
+
     initscr();
     noecho();
     curs_set(0);
+    keypad(stdscr, TRUE);
+    nodelay(stdscr, TRUE);    
     start_color();
 
-    init_pair(1, COLOR_GREEN,  COLOR_BLACK);  // idle workers
+    init_pair(1, COLOR_GREEN,  COLOR_BLACK);  // idle workers / completed
     init_pair(2, COLOR_YELLOW, COLOR_BLACK);  // busy workers
-    init_pair(3, COLOR_RED,    COLOR_BLACK);  // offline workers
+    init_pair(3, COLOR_RED,    COLOR_BLACK);  // offline workers / failed jobs
     init_pair(4, COLOR_CYAN,   COLOR_BLACK);  // headers
 
     while (1) {
-        clear();
+        int rows, cols;
+        getmaxyx(stdscr, rows, cols);
 
-        // Header
+        int content_width = cols / 2;
+        int cx = (cols - content_width) / 2;
+
+        clear();
+        int r = 0;
+
+        // ================= RECENT LOGS (TOP) =================
+        #define MAX_VISIBLE_LOGS 5
+
         attron(COLOR_PAIR(4) | A_BOLD);
-        mvprintw(0, 0, "=== NodeTalk Job Queue Broker ===");
+        mvhline(r, cx, ACS_HLINE, content_width);
+        mvaddch(r, cx, ACS_ULCORNER);
+        mvaddch(r, cx + content_width - 1, ACS_URCORNER);
+        mvprintw(r, cx + 2, " RECENT LOGS ");
         attroff(COLOR_PAIR(4) | A_BOLD);
 
-        // Worker status table
-        mvprintw(2, 0, "WORKERS:");
-        mvprintw(3, 0, "%-5s %-10s %-8s %-10s %-8s",
-                 "ID", "STATUS", "JOBS_DONE", "JOBS_FAILED", "LAST_SEEN");
+        sem_wait(&log_mutex);
+        int log_count = log_queue->count;
+        int head      = log_queue->head;
+        int visible   = (log_count < MAX_VISIBLE_LOGS) ? log_count : MAX_VISIBLE_LOGS;
+        int view_start = (head - visible + 200) % 200;
 
-        
+        for (int i = 1; i <= MAX_VISIBLE_LOGS; i++)
+            mvaddch(r + i, cx, ACS_VLINE),
+            mvaddch(r + i, cx + content_width - 1, ACS_VLINE);
+
+        for (int i = 0; i < visible; i++) {
+            int idx = (view_start + i) % 200;
+            mvprintw(r + 1 + i, cx + 1, "%-.*s",
+                     content_width - 2, log_queue->log_messages[idx]);
+        }
+        sem_post(&log_mutex);
+
+        int bottom_border = r + MAX_VISIBLE_LOGS + 1;
+        mvhline(bottom_border, cx, ACS_HLINE, content_width);
+        mvaddch(bottom_border, cx, ACS_LLCORNER);
+        mvaddch(bottom_border, cx + content_width - 1, ACS_LRCORNER);
+
+        r = bottom_border + 2;
+
+        // ================= HEADER =================
+        attron(COLOR_PAIR(4) | A_BOLD);
+        mvprintw(r++, cx, "=== Job Queue Broker ===");
+        attroff(COLOR_PAIR(4) | A_BOLD);
+        r++;
+
+        // ================= WORKERS =================
+        attron(A_BOLD);
+        mvprintw(r++, cx, "WORKERS:");
+        attroff(A_BOLD);
+        mvprintw(r++, cx, "%-5s %-10s %-10s %-12s",
+                 "ID", "STATUS", "JOBS_DONE", "JOBS_FAILED");
+
         sem_wait(&worker_mutex);
+        for (int i = 0; i < worker_pool.num_workers; i++) {
+            int pair;
+            const char* status_str;
 
-        int row = 4;
-        
-        for (int i = 0 ; i < worker_pool.num_workers ; i++)
-        {
-            int pair = (worker_pool.workers[i].status == WORKER_IDLE) ? 1 :
-                       (worker_pool.workers[i].status == WORKER_BUSY) ? 2 : 3;
-            const char* status_str = (worker_pool.workers[i].status == WORKER_IDLE) ? "IDLE" :
-                                     (worker_pool.workers[i].status == WORKER_BUSY) ? "BUSY" : "OFFLINE";
+            if      (worker_pool.workers[i].status == WORKER_IDLE) { pair = 1; status_str = "IDLE";    }
+            else if (worker_pool.workers[i].status == WORKER_BUSY) { pair = 2; status_str = "BUSY";    }
+            else                                                    { pair = 3; status_str = "OFFLINE"; }
 
             attron(COLOR_PAIR(pair));
-            mvprintw(row++, 0, "%-5d %-10s %-8d %-10d",
+            mvprintw(r++, cx, "%-5d %-10s %-10d %-12d",
                      worker_pool.workers[i].worker_id, status_str,
-                     worker_pool.workers[i].jobs_completed, worker_pool.workers[i].jobs_failed);
+                     worker_pool.workers[i].jobs_completed,
+                     worker_pool.workers[i].jobs_failed);
             attroff(COLOR_PAIR(pair));
         }
-
         sem_post(&worker_mutex);
+        r++;
 
-        // Job queue stats
-
+        // ================= JOB QUEUE STATS =================
         sem_wait(&registry_mutex);
-        
         int pending = 0, in_progress = 0, completed = 0, failed = 0;
-        
-
-        for (int i = 0 ; i < jobs_registered ; i++) {
+        for (int i = 0; i < jobs_registered; i++) {
             if      (registry[i]->status == JOB_PENDING)     pending++;
             else if (registry[i]->status == JOB_IN_PROGRESS) in_progress++;
             else if (registry[i]->status == JOB_COMPLETED)   completed++;
             else if (registry[i]->status == JOB_FAILED)      failed++;
         }
-        
         sem_post(&registry_mutex);
 
-        mvprintw(row + 2, 0, "JOB QUEUE:");
+        attron(A_BOLD);
+        mvprintw(r++, cx, "JOB QUEUE:");
+        attroff(A_BOLD);
+
         attron(COLOR_PAIR(1));
-        mvprintw(row + 3, 0, "  Pending:     %d", pending);
-        mvprintw(row + 4, 0, "  In Progress: %d", in_progress);
-        mvprintw(row + 5, 0, "  Completed:   %d", completed);
+        mvprintw(r++, cx, "  Pending:     %d", pending);
+        mvprintw(r++, cx, "  In Progress: %d", in_progress);
+        mvprintw(r++, cx, "  Completed:   %d", completed);
         attroff(COLOR_PAIR(1));
+
         attron(COLOR_PAIR(3));
-        mvprintw(row + 6, 0, "  Failed:      %d", failed);
+        mvprintw(r++, cx, "  Failed:      %d", failed);
         attroff(COLOR_PAIR(3));
 
-        // Recent job log (last 5)
-        mvprintw(row + 8, 0, "RECENT JOBS:");
-        // ... iterate last 5 entries in job_registry and print
-
         refresh();
-        sleep(1);   // update every second
+        napms(500);
     }
+
     endwin();
+    return NULL;
 }

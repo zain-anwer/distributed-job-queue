@@ -1,3 +1,16 @@
+/*
+
+NOTES:
+
+1. since the ncurses window and the normal I/O buffer will clash we will use logging queue
+2. logging queue will be populated with the server messages and will be read from the dashboard
+3. we don't use a file because disk access is slower than memory access
+
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <pthread.h>
@@ -6,6 +19,7 @@
 #include "../lib/job_queue.h"
 #include "../lib/client_pool.h"
 #include "../lib/worker_pool.h"
+#include "../lib/log_queue.h"
 
 #include "handlers/health_check_handler.h"
 #include "handlers/dashboard_handler.h"
@@ -16,20 +30,41 @@
 #include "../util/socket.h"
 #include "../util/sync.h"
 
+struct LogQueue* log_queue;
+
 int main()
 {
-	setvbuf(stdout, NULL, _IONBF, 0); // disable buffering
-
 	/* initialization of synchronization locks for producer-consumer behaviour */
 
     sync_init(MAX_JOB_NUM);
+	int idx;
+
+	/* initializing log queue */
+
+	log_queue = (struct LogQueue*) malloc (sizeof(struct LogQueue));
+	log_queue->count = 0;
+	log_queue->head = 0;
 
 	/* creating server socket */
 
 	int socket_fd = createTCPIpv4Socket();
 	struct sockaddr* address = createTCPIpv4SocketAddress("",2000);
+
 	if (bind(socket_fd,address,sizeof(*address)) == 0)
-		printf("Socket Bound Successfully\n");
+	{
+		sem_wait(&log_mutex);
+
+		idx = log_queue->head;
+
+		snprintf(log_queue->log_messages[idx],1024,"Socket Bound Successfully\n");
+		
+		log_queue->head = (log_queue->head + 1) % 200;
+		
+		if (log_queue->count < 200)
+			log_queue->count++;
+
+		sem_post(&log_mutex);
+	}	
 
 	/* defining backlog (number of clients waiting to be serviced) as 10 for now */
 	
@@ -42,7 +77,7 @@ int main()
 	/* these threads will continue to run in the background regardless of connections */
 
 	pthread_create(&dashboard_thread,NULL,dashboard,NULL);
-	pthread_detach(&dashboard_thread);
+	pthread_detach(dashboard_thread);
 	pthread_create(&dispatcher_thread,NULL,dispatch_jobs,NULL);
 	pthread_detach(dispatcher_thread);
 	pthread_create(&health_checker_thread,NULL,health_check,NULL);
@@ -68,24 +103,58 @@ int main()
 		{
 			pthread_create(&handler,NULL,client_handler,(void*)conn_fd);
 			pthread_detach(handler);
-			printf("CLIENT HANDSHAKE - CONNECTION ESTABLISHED\n");
+		
+			sem_wait(&log_mutex);
+
+			idx = log_queue->head;
+
+			snprintf(log_queue->log_messages[idx],1024,"CLIENT HANDSHAKE - CONNECTION ESTABLISHED\n");
+			
+			log_queue->head = (log_queue->head + 1) % 200;
+			
+			if (log_queue->count < 200)
+				log_queue->count++;
+
+			sem_post(&log_mutex);
 		}
 
 		else if (strncmp(handshake,"WORKER",6) == 0)
 		{
 			pthread_create(&handler,NULL,worker_handler,(void*)conn_fd);
 			pthread_detach(handler);
-			printf("WORKER HANDSHAKE - CONNECTION ESTABLISHED\n");
+			
+			sem_wait(&log_mutex);
+
+			idx = log_queue->head;
+
+			snprintf(log_queue->log_messages[idx],1024,"WORKER HANDSHAKE - CONNECTION ESTABLISHED\n");
+			
+			log_queue->head = (log_queue->head + 1) % 200;
+			
+			if (log_queue->count < 200)
+				log_queue->count++;
+
+			sem_post(&log_mutex);
 		}
 
 		else 
 		{
-			printf("ERROR: UNKNOWN CONNECTION/HANDSHAKE\n");
-			fflush(stdout);
+			sem_wait(&log_mutex);
+
+			idx = log_queue->head;
+
+			snprintf(log_queue->log_messages[idx],1024,"UNKNOWN HANDSHAKE - CONNECTION REFUSED\n");
+			
+			log_queue->head = (log_queue->head + 1) % 200;
+			
+			if (log_queue->count < 200)
+				log_queue->count++;
+
+			sem_post(&log_mutex);
+
 			close(*conn_fd);
 			free(conn_fd);
 		}
-
 		fflush(stdout);
 		memset(handshake,0,sizeof(handshake));
 		

@@ -2,6 +2,7 @@
 
 void* worker_handler(void* arg)
 {
+    int idx;
 
     printf("Worker handler started\n");
     fflush(stdout);
@@ -9,37 +10,30 @@ void* worker_handler(void* arg)
     int fd = *((int*) arg);
     free(arg);
 
-    int v1, v2, v3, v4, v5;
-    sem_getvalue(&worker_mutex,     &v1);
-    sem_getvalue(&registry_mutex,   &v2);
-    sem_getvalue(&queue_mutex,      &v3);
-    sem_getvalue(&workers_available,&v4);
-    sem_getvalue(&full,             &v5);
-
-    printf("worker_mutex=%d registry_mutex=%d queue_mutex=%d workers_available=%d full=%d\n",
-            v1, v2, v3, v4, v5);
-    fflush(stdout);
-
     sem_wait(&worker_mutex);
     
-    printf("Adding Worker\n");
-    fflush(stdout);
+    sem_wait(&log_mutex);
+
+		idx = log_queue->head;
+
+		snprintf(log_queue->log_messages[idx],1024,"Adding New Worker\n");
+		
+		log_queue->head = (log_queue->head + 1) % 200;
+		
+		if (log_queue->count < 200)
+			log_queue->count++;
+
+	sem_post(&log_mutex);
 
     WorkerPool_Add(&worker_pool,createWorker(fd));
     struct Worker* new_worker = findWorkerByFd(&worker_pool,fd);
     int worker_id = new_worker->worker_id;
-    
-    printf("Added Worker\n");
-    fflush(stdout);
 
     sem_post(&worker_mutex);
     
     /* increase the number of workers available by 1 */
 
     sem_post(&workers_available);
-
-    printf("Worker added\n");
-    fflush(stdout);
 
     char buffer[1024];
  
@@ -69,16 +63,24 @@ void* worker_handler(void* arg)
             /* notifying client (bourgoise!!) */
 
             char notification[2048];
-            snprintf(notification, sizeof(notification), "JOB COMPLETED\nResult: %s\n", result);
+            snprintf(notification, sizeof(notification), "JOB COMPLETED --- Result: %s\n", result);
 
             write(client_fd,notification,strlen(notification));
 
             /* logging the message to check on console as well */
 
-            printf("== JOB DONE ==\n");
-            printf("worker id: %d\n",worker_id);
-            printf("job id: %d\n",job_id);
-            printf("result: %s\n",result);
+            sem_wait(&log_mutex);
+
+                idx = log_queue->head;
+
+                snprintf(log_queue->log_messages[idx],1024,"-- JOB DONE -- \n");
+                
+                log_queue->head = (log_queue->head + 1) % 200;
+                
+                if (log_queue->count < 200)
+                    log_queue->count++;
+
+            sem_post(&log_mutex);
 
             /* update job status */
 
@@ -117,16 +119,24 @@ void* worker_handler(void* arg)
             /* notifying client (bourgoise!!) */
 
             char notification[2048];
-            snprintf(notification, sizeof(notification), "JOB FAILED\nResult: %s\n", result);
+            snprintf(notification, sizeof(notification), "JOB FAILED -- Result: %s\n", result);
 
             write(client_fd,notification,strlen(notification));
 
             /* logging the message to check on console as well */
 
-            printf("== JOB FAILED ==\n");
-            printf("worker id: %d\n",worker_id);
-            printf("job id: %d\n",job_id);
-            printf("result: %s\n",result);
+            sem_wait(&log_mutex);
+
+                idx = log_queue->head;
+
+                snprintf(log_queue->log_messages[idx],1024,"-- JOB FAILED -- \n");
+                
+                log_queue->head = (log_queue->head + 1) % 200;
+                
+                if (log_queue->count < 200)
+                    log_queue->count++;
+
+            sem_post(&log_mutex);
 
             /* update job status */
 
@@ -152,6 +162,7 @@ void* worker_handler(void* arg)
             new_worker->last_heartbeat = time(NULL);
 
             if (new_worker->status == WORKER_OFFLINE)
+               
                 new_worker->status = WORKER_IDLE;    
 
             sem_post(&worker_mutex);
@@ -161,8 +172,20 @@ void* worker_handler(void* arg)
 
     if (registry == NULL)
     {
-        printf("Registry data structure uninitialized\n");
-        fflush(stdout);
+        
+        sem_wait(&log_mutex);
+
+            idx = log_queue->head;
+
+            snprintf(log_queue->log_messages[idx],1024,"ERROR: Registry Uninitialized");
+                
+            log_queue->head = (log_queue->head + 1) % 200;
+                
+            if (log_queue->count < 200)
+                log_queue->count++;
+
+        sem_post(&log_mutex);
+
         return;
     }
 
@@ -181,9 +204,19 @@ void* worker_handler(void* arg)
          
             sem_post(&queue_mutex);
             sem_post(&full); 
-    
-            printf("== WORKER DOWN ==");
-            printf("job with job id = %d readded to queue\n",registry[i]->job_id);
+
+            sem_wait(&log_mutex);
+
+            idx = log_queue->head;
+
+            snprintf(log_queue->log_messages[idx],1024,"-- WORKER DOWN -- Job with Job ID: %d requeued\n",registry[i]->job_id);
+                
+            log_queue->head = (log_queue->head + 1) % 200;
+                
+            if (log_queue->count < 200)
+                log_queue->count++;
+
+            sem_post(&log_mutex);
         }
     }
 
@@ -195,8 +228,19 @@ void* worker_handler(void* arg)
     WorkerPool_Remove(&worker_pool,fd);
     sem_post(&worker_mutex);
 
-    printf("WORKER REMOVED -> (worker_id : %d) (worker_fd : %d)\n",worker_id,fd);
-    fflush(stdout);
+
+    sem_wait(&log_mutex);
+
+        idx = log_queue->head;
+
+        snprintf(log_queue->log_messages[idx],1024,"WORKER REMOVED -> (worker_id : %d) (worker_fd : %d)\n",worker_id,fd);
+                
+        log_queue->head = (log_queue->head + 1) % 200;
+                
+        if (log_queue->count < 200)
+            log_queue->count++;
+
+    sem_post(&log_mutex);
 
     close(fd);
 }

@@ -4,21 +4,70 @@
 
 void* dispatch_jobs(void* arg)
 {
-	printf("Dispatcher thread started\n");
-    fflush(stdout);
+	int idx;
+
+	sem_wait(&log_mutex);
+
+		idx = log_queue->head;
+
+		snprintf(log_queue->log_messages[idx],1024,"Dispatcher Thread Started\n");
+		
+		log_queue->head = (log_queue->head + 1) % 200;
+		
+		if (log_queue->count < 200)
+			log_queue->count++;
+
+	sem_post(&log_mutex);
+	
 	while (1)
 	{
-		printf("Dispatcher waiting for jobs\n");
-		fflush(stdout);
+		sem_wait(&log_mutex);
+
+		idx = log_queue->head;
+
+		snprintf(log_queue->log_messages[idx],1024,"Dispatcher Waiting For Jobs\n");
+		
+		log_queue->head = (log_queue->head + 1) % 200;
+		
+		if (log_queue->count < 200)
+			log_queue->count++;
+
+		sem_post(&log_mutex);
+		
 		sem_wait(&full);
 
-		printf("Dispatcher waiting for workers\n");
-		fflush(stdout);
+		
+		sem_wait(&log_mutex);
+
+		idx = log_queue->head;
+
+		snprintf(log_queue->log_messages[idx],1024,"Dispatcher Waiting For Workers\n");
+		
+		log_queue->head = (log_queue->head + 1) % 200;
+		
+		if (log_queue->count < 200)
+			log_queue->count++;
+
+		sem_post(&log_mutex);
+
+
 		sem_wait(&workers_available);
 		sem_wait(&queue_mutex);
 
-		printf("Dequeued Job\n");
-		fflush(stdout);
+		sem_wait(&log_mutex);
+
+		idx = log_queue->head;
+
+		snprintf(log_queue->log_messages[idx],1024,"Dequeued Job\n");
+		
+		log_queue->head = (log_queue->head + 1) % 200;
+		
+		if (log_queue->count < 200)
+			log_queue->count++;
+
+		sem_post(&log_mutex);
+
+
 		struct Job* job = dequeue(&job_queue);
 
 		sem_post(&queue_mutex);
@@ -40,10 +89,22 @@ void* dispatch_jobs(void* arg)
 		char msg[1100];
 		snprintf(msg, sizeof(msg), "JOB %d %s\n", job->job_id, job->payload);
 		write(worker->fd, msg, strlen(msg));
-		printf("Job sent to worker\n");
+		
+		sem_wait(&log_mutex);
+
+		idx = log_queue->head;
+
+		snprintf(log_queue->log_messages[idx],1024,"Job Sent To Worker\n");
+		
+		log_queue->head = (log_queue->head + 1) % 200;
+		
+		if (log_queue->count < 200)
+			log_queue->count++;
+
+		sem_post(&log_mutex);
 
 	}
-	printf("Dispatcher Thread Ended\n");
-	fflush(stdout);
+	
 	/* simulate whatever at the worker's end for job resolution */
+
 }

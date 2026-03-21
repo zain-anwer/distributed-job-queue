@@ -5,8 +5,10 @@
 #include <string.h>
 #include "../../lib/worker_pool.h"
 #include "../../lib/job_queue.h"
+#include "../../lib/log_queue.h"
 #include "../../util/sync.h"
 
+extern struct LogQueue* log_queue;
 
 void* worker_handler(void* arg);
 

@@ -7,7 +7,7 @@ sem_t full;
 sem_t worker_mutex;
 sem_t workers_available;
 sem_t client_mutex;
-
+sem_t log_mutex;
 
 void sync_init(int queue_size)
 {
@@ -24,4 +24,7 @@ void sync_init(int queue_size)
 
 	/* client mutex to access and write to the client pool */
 	sem_init(&client_mutex,0,1);
+
+	/* log mutex to prevent clashes in writing to server log */
+	sem_init(&log_mutex,0,1);
 }

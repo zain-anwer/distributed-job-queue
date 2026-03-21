@@ -11,12 +11,15 @@
 #include <stdbool.h>
 #include <string.h>
 #include "../../lib/job_queue.h"
+#include "../../lib/log_queue.h"
 #include "../../lib/client_pool.h"
 #include "../../util/sync.h"
 
 #define BUFFER_SIZE 1024
 #define RESPONSE_SIZE 1024
 #define ACK_SIZE 64
+
+extern struct LogQueue* log_queue;
 
 /* the following program will be the producer (populate the queue) */
 

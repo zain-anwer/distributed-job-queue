@@ -76,7 +76,19 @@ void* client_handler(void* arg) {
     ClientPool_Remove(&client_pool,fd);
     sem_post(&client_mutex);
 
-    printf("REMOVED CLIENT -> (client_fd: %d)\n",fd);
+    sem_wait(&log_mutex);
+
+		int idx = log_queue->head;
+
+		snprintf(log_queue->log_messages[idx],1024,"REMOVED CLIENT -> (client_fd: %d)\n",fd);
+		
+		log_queue->head = (log_queue->head + 1) % 200;
+		
+		if (log_queue->count < 200)
+			log_queue->count++;
+
+	sem_post(&log_mutex);
+
     fflush(stdout);
 }
 
