@@ -8,6 +8,7 @@
 #include "../lib/worker_pool.h"
 
 #include "handlers/health_check_handler.h"
+#include "handlers/dashboard_handler.h"
 #include "handlers/client_handler.h"
 #include "handlers/worker_handler.h"
 #include "handlers/dispatcher.h"
@@ -36,9 +37,12 @@ int main()
 
 	pthread_t dispatcher_thread;
 	pthread_t health_checker_thread;
+	pthread_t dashboard_thread;
 
 	/* these threads will continue to run in the background regardless of connections */
 
+	pthread_create(&dashboard_thread,NULL,dashboard,NULL);
+	pthread_detach(&dashboard_thread);
 	pthread_create(&dispatcher_thread,NULL,dispatch_jobs,NULL);
 	pthread_detach(dispatcher_thread);
 	pthread_create(&health_checker_thread,NULL,health_check,NULL);

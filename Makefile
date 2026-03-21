@@ -1,9 +1,9 @@
 CC = gcc
-CFLAGS = -Wall -g -pthread -fsanitize=address
+CFLAGS = -lncurses -Wall -g -pthread -fsanitize=address
 
 # Source files
 SERVER_SRC = src/server.c src/handlers/client_handler.c src/handlers/worker_handler.c \
-             src/handlers/dispatcher.c src/handlers/health_check_handler.c \
+             src/handlers/dispatcher.c src/handlers/health_check_handler.c src/handlers/dashboard_handler.c \
              util/sync.c lib/job_queue.c lib/client_pool.c lib/worker_pool.c util/socket.c
 
 CLIENT_SRC = src/client.c util/socket.c
