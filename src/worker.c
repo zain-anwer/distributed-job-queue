@@ -122,7 +122,7 @@ void execute_job(char* payload, int job_id, int fd) {
     if (job_failed)
         snprintf(result, sizeof(result), "FAILED %d Random Failure\n", job_id);
     else
-        snprintf(result, sizeof(result), "DONE %d Processed:%s\n", job_id, payload);
+        snprintf(result, sizeof(result), "DONE %d - %s\n", job_id, payload);
 
     printf("Job result formulated\n");
     write(fd, result, strlen(result));

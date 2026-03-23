@@ -40,7 +40,7 @@ void* client_handler(void* arg) {
             /* sending an acknowledgment */
 
             char ack[ACK_SIZE];
-            snprintf(ack,ACK_SIZE,"ACK\nJOB SUBMITTED - JOB ID: %d\n",new_job->job_id);
+            snprintf(ack,ACK_SIZE,"ACK: JOB SUBMITTED - JOB ID: %d\n",new_job->job_id);
             write(fd,ack,strlen(ack));
         }
         
@@ -90,6 +90,7 @@ void* client_handler(void* arg) {
 	sem_post(&log_mutex);
 
     fflush(stdout);
+    pthread_exit(0);
 }
 
 

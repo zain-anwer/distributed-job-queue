@@ -2,7 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 #include "../util/socket.h"
+
+void* notif_listener(void* arg);
 
 int main(int argc, char** argv)
 
@@ -29,6 +32,10 @@ int main(int argc, char** argv)
 
     free(address);
 
+    pthread_t notif_thread;
+    pthread_create(&notif_thread,NULL,notif_listener,(void*)&client_fd);
+    
+
     write(client_fd, "CLIENT", 6);
 
     char request[1024];
@@ -39,10 +46,26 @@ int main(int argc, char** argv)
         snprintf(request, sizeof(request), "SUBMIT %s\n", message);
         write(client_fd, request, strlen(request));
         memset(request, 0, sizeof(request));
-        memset(message, 0, sizeof(message));
         usleep(500000);
     }
 
 
     return 0;
+}
+
+void* notif_listener(void* arg)
+{
+    int fd = *((int*)arg);
+    char notification[1024];
+
+    while (read(fd, notification, sizeof(notification)) > 0) {
+        
+        printf("NOTIFICATION: %s", notification);
+        fflush(stdout);
+        memset(notification, 0, sizeof(notification));
+    }
+
+    // Broker disconnected
+    printf("[CLIENT] Connection to broker lost\n");
+    exit(1);
 }
