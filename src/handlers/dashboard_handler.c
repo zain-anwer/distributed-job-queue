@@ -8,11 +8,12 @@ void* dashboard(void* arg) {
     keypad(stdscr, TRUE);
     nodelay(stdscr, TRUE);    
     start_color();
+    use_default_colors();
 
-    init_pair(1, COLOR_GREEN,  COLOR_BLACK);  // idle workers / completed
-    init_pair(2, COLOR_YELLOW, COLOR_BLACK);  // busy workers
-    init_pair(3, COLOR_RED,    COLOR_BLACK);  // offline workers / failed jobs
-    init_pair(4, COLOR_CYAN,   COLOR_BLACK);  // headers
+    init_pair(1, COLOR_GREEN,  -1);  // idle workers / completed
+    init_pair(2, COLOR_YELLOW, -1);  // busy workers
+    init_pair(3, COLOR_RED,    -1);  // offline workers / failed jobs
+    init_pair(4, COLOR_CYAN,   -1);  // headers
 
     while (1) {
         int rows, cols;
@@ -22,7 +23,7 @@ void* dashboard(void* arg) {
         int cx = (cols - content_width) / 2;
 
         clear();
-        int r = 0;
+        int r = rows/4;
 
         // ================= RECENT LOGS (TOP) =================
         #define MAX_VISIBLE_LOGS 5
@@ -60,7 +61,7 @@ void* dashboard(void* arg) {
 
         // ================= HEADER =================
         attron(COLOR_PAIR(4) | A_BOLD);
-        mvprintw(r++, cx, "=== Job Queue Broker ===");
+        mvprintw(r++, cx, "Job Queue Broker");
         attroff(COLOR_PAIR(4) | A_BOLD);
         r++;
 

@@ -36,4 +36,4 @@ stress_test_client: $(STRESS_TEST_CLIENT_OBJS)
 
 
 clean:
-	rm -f server client worker stress_test_client *.o
+	rm -f server client worker stress_test_client *.o lib/*.o src/*.o src/handlers/*.o lib/*.o util/*.o
