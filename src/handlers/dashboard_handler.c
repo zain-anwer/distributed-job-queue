@@ -94,7 +94,9 @@ void* dashboard(void* arg) {
         // ================= JOB QUEUE STATS =================
         sem_wait(&registry_mutex);
         int pending = 0, in_progress = 0, completed = 0, failed = 0;
-        for (int i = 0; i < jobs_registered; i++) {
+        for (int i = 0; i < jobs_registered && i < MAX_JOB_NUM; i++) {
+            if (registry[i] == NULL)
+                continue;
             if      (registry[i]->status == JOB_PENDING)     pending++;
             else if (registry[i]->status == JOB_IN_PROGRESS) in_progress++;
             else if (registry[i]->status == JOB_COMPLETED)   completed++;

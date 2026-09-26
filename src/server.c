@@ -15,6 +15,7 @@ NOTES:
 #include <stdbool.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "../lib/job_queue.h"
 #include "../lib/client_pool.h"
@@ -32,6 +33,21 @@ NOTES:
 
 struct LogQueue* log_queue;
 
+static int read_handshake(int fd, char handshake[7])
+{
+	size_t received = 0;
+	while (received < 6) {
+		ssize_t result = read(fd, handshake + received, 6 - received);
+		if (result < 0 && errno == EINTR)
+			continue;
+		if (result <= 0)
+			return -1;
+		received += (size_t)result;
+	}
+	handshake[6] = '\0';
+	return 0;
+}
+
 int main()
 {
 	/* initialization of synchronization locks for producer-consumer behaviour */
@@ -42,6 +58,11 @@ int main()
 	/* initializing log queue */
 
 	log_queue = (struct LogQueue*) malloc (sizeof(struct LogQueue));
+	if (log_queue == NULL)
+	{
+		fprintf(stderr, "Failed to allocate log queue\n");
+		return EXIT_FAILURE;
+	}
 	log_queue->count = 0;
 	log_queue->head = 0;
 
@@ -49,6 +70,17 @@ int main()
 
 	int socket_fd = createTCPIpv4Socket();
 	struct sockaddr* address = createTCPIpv4SocketAddress("",2000);
+	if (socket_fd == -1 || address == NULL)
+	{
+		perror("server socket setup");
+		if (socket_fd >= 0)
+			close(socket_fd);
+		free(address);
+		free(log_queue);
+		return EXIT_FAILURE;
+	}
+	int reuse_address = 1;
+	setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse_address, sizeof(reuse_address));
 
 	if (bind(socket_fd,address,sizeof(*address)) == 0)
 	{
@@ -64,11 +96,26 @@ int main()
 			log_queue->count++;
 
 		sem_post(&log_mutex);
-	}	
+	}
+	else
+	{
+		perror("bind");
+		free(address);
+		close(socket_fd);
+		free(log_queue);
+		return EXIT_FAILURE;
+	}
+	free(address);
 
 	/* defining backlog (number of clients waiting to be serviced) as 10 for now */
 	
-	listen(socket_fd,10);
+	if (listen(socket_fd, 10) == -1)
+	{
+		perror("listen");
+		close(socket_fd);
+		free(log_queue);
+		return EXIT_FAILURE;
+	}
 
 	pthread_t dispatcher_thread;
 	pthread_t health_checker_thread;
@@ -85,23 +132,43 @@ int main()
 
 	/* differentiate between clients and workers connecting through handshake */
 
-	char handshake[1024];
+	char handshake[7];
 
 	while (true)
 	{
 		struct sockaddr clientAddress;
 		socklen_t clientAddressSize = sizeof(clientAddress);
 		
-		int* conn_fd = (int*) malloc(sizeof(int));
+		int* conn_fd = malloc(sizeof(*conn_fd));
+		if (conn_fd == NULL)
+			continue;
 		*conn_fd = accept(socket_fd,&clientAddress,&clientAddressSize);
+		if (*conn_fd == -1)
+		{
+			free(conn_fd);
+			if (errno == EINTR)
+				continue;
+			perror("accept");
+			continue;
+		}
 
 		pthread_t handler;
 
-		read(*conn_fd,handshake,sizeof(handshake));
+		if (read_handshake(*conn_fd, handshake) == -1)
+		{
+			close(*conn_fd);
+			free(conn_fd);
+			continue;
+		}
 
 		if (strncmp(handshake,"CLIENT",6) == 0)
 		{
-			pthread_create(&handler,NULL,client_handler,(void*)conn_fd);
+			if (pthread_create(&handler,NULL,client_handler,(void*)conn_fd) != 0)
+			{
+				close(*conn_fd);
+				free(conn_fd);
+				continue;
+			}
 			pthread_detach(handler);
 		
 			sem_wait(&log_mutex);
@@ -120,7 +187,12 @@ int main()
 
 		else if (strncmp(handshake,"WORKER",6) == 0)
 		{
-			pthread_create(&handler,NULL,worker_handler,(void*)conn_fd);
+			if (pthread_create(&handler,NULL,worker_handler,(void*)conn_fd) != 0)
+			{
+				close(*conn_fd);
+				free(conn_fd);
+				continue;
+			}
 			pthread_detach(handler);
 			
 			sem_wait(&log_mutex);
@@ -156,8 +228,6 @@ int main()
 			free(conn_fd);
 		}
 		fflush(stdout);
-		memset(handshake,0,sizeof(handshake));
-		
 	}
 	shutdown(socket_fd,SHUT_RDWR);
 	sem_destroy(&queue_mutex);

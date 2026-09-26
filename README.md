@@ -34,3 +34,9 @@ This system allows multiple clients to submit jobs to a central broker, which qu
             │   ├── socket.c / .h             # TCP socket helpers
             │   └── sync.c / .h               # All semaphores and mutexes + sync_init()
             └── Makefile
+
+**Running locally**
+
+Build with `make`, then run the broker, each worker, and each interactive client in separate terminals. The broker dashboard and client use ncurses, which sends terminal-control sequences; sharing one terminal with worker output can make cursor-position replies such as `^[[5;1R` appear in the output.
+
+Workers succeed by default. To test simulated failures, start a worker with `WORKER_FAILURE_RATE=10` to make approximately 10% of its jobs fail. The accepted value is an integer percentage from 0 to 100.

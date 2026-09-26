@@ -1,5 +1,6 @@
 CC = gcc
-CFLAGS = -lncurses -Wall -g -pthread -fsanitize=address
+CFLAGS = -Wall -g -pthread -fsanitize=address
+LDLIBS = -lncurses
 
 # Source files
 SERVER_SRC = src/server.c src/handlers/client_handler.c src/handlers/worker_handler.c \
@@ -23,16 +24,16 @@ all: server client worker stress_test_client
 	$(CC) $(CFLAGS) -c $< -o $@
 
 server: $(SERVER_OBJS)
-	$(CC) $(CFLAGS) -o $@ $(SERVER_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(SERVER_OBJS) $(LDLIBS)
 
 client: $(CLIENT_OBJS)
-	$(CC) $(CFLAGS) -o $@ $(CLIENT_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(CLIENT_OBJS) $(LDLIBS)
 
 worker: $(WORKER_OBJS)
-	$(CC) $(CFLAGS) -o $@ $(WORKER_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(WORKER_OBJS) $(LDLIBS)
 
 stress_test_client: $(STRESS_TEST_CLIENT_OBJS)
-	$(CC) $(CFLAGS) -o $@ $(STRESS_TEST_CLIENT_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(STRESS_TEST_CLIENT_OBJS) $(LDLIBS)
 
 
 clean:

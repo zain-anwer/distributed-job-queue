@@ -1,5 +1,7 @@
 #include "worker_pool.h"
 
+#include <string.h>
+
 int curr_worker_id = 1;
 struct WorkerPool worker_pool = {.workers = NULL, .num_workers = 0};
 
@@ -20,33 +22,35 @@ void WorkerPool_init(struct WorkerPool* pool) {
 }
 
 void WorkerPool_Add(struct WorkerPool* pool, struct Worker worker) {
-    if (pool->num_workers == 0)
-    {
-        pool->workers = (struct Worker*) malloc(sizeof(struct Worker));
-        pool->workers[pool->num_workers] = worker;
-        pool->num_workers += 1;
+    struct Worker* workers = realloc(pool->workers,
+                                     sizeof(*pool->workers) * (size_t)(pool->num_workers + 1));
+    if (workers == NULL)
         return;
-    }
-    pool->num_workers += 1;
-    pool->workers = realloc(pool->workers,sizeof(struct Worker)*(pool->num_workers));
-    pool->workers[pool->num_workers-1] = worker;
+
+    pool->workers = workers;
+    pool->workers[pool->num_workers] = worker;
+    pool->num_workers++;
 }
 
 void WorkerPool_Remove(struct WorkerPool* pool, int worker_fd)
 {
-    
-    int i;
-    struct WorkerPool* new_pool = malloc(sizeof(struct WorkerPool));
-    WorkerPool_init(new_pool);
-
-    for (i = 0;i < pool->num_workers;i++)
+    for (int i = 0; i < pool->num_workers; i++)
     {
         if (pool->workers[i].fd != worker_fd)
-            WorkerPool_Add(new_pool,pool->workers[i]);
+            continue;
+
+        if (i + 1 < pool->num_workers)
+            memmove(&pool->workers[i], &pool->workers[i + 1],
+                    sizeof(*pool->workers) * (size_t)(pool->num_workers - i - 1));
+        pool->num_workers--;
+
+        if (pool->num_workers == 0)
+        {
+            free(pool->workers);
+            pool->workers = NULL;
+        }
+        return;
     }
-    free(pool->workers);
-    *pool = *new_pool;
-    free(new_pool);
 }
 
 struct Worker* findIdleWorker(struct WorkerPool* pool) {

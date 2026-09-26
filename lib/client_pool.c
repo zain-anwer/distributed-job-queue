@@ -1,5 +1,7 @@
 #include "client_pool.h"
 
+#include <string.h>
+
 int curr_client_id = 1;
 struct ClientPool client_pool = {.clients = NULL, .num_clients = 0};
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -19,32 +21,32 @@ void ClientPool_init(struct ClientPool* pool) {
 }
 
 void ClientPool_Add(struct ClientPool* pool, struct Client client) {
-    if (pool->num_clients == 0)
-    {
-        pool->clients = (struct Client*) malloc(sizeof(struct Client));
-        pool->clients[pool->num_clients] = client;
-        pool->num_clients += 1;
+    struct Client* clients = realloc(pool->clients,
+                                     sizeof(*pool->clients) * (size_t)(pool->num_clients + 1));
+    if (clients == NULL)
         return;
-    }
-    pool->num_clients += 1;
-    pool->clients = realloc(pool->clients,sizeof(struct Client)*(pool->num_clients));
-    pool->clients[pool->num_clients-1] = client;
+
+    pool->clients = clients;
+    pool->clients[pool->num_clients] = client;
+    pool->num_clients++;
 }
 
 void ClientPool_Remove(struct ClientPool* pool, int client_fd)
 {
-    
-    int i;
-    struct ClientPool* new_pool = malloc(sizeof(struct ClientPool));
-    ClientPool_init(new_pool);
-
-    for (i = 0;i < pool->num_clients;i++)
+    for (int i = 0; i < pool->num_clients; i++)
     {
         if (pool->clients[i].fd != client_fd)
-            ClientPool_Add(new_pool,pool->clients[i]);
-    }
+            continue;
 
-    free(pool->clients);
-    *pool = *new_pool;
-    free(new_pool);
+        if (i + 1 < pool->num_clients)
+            memmove(&pool->clients[i], &pool->clients[i + 1],
+                    sizeof(*pool->clients) * (size_t)(pool->num_clients - i - 1));
+        pool->num_clients--;
+        if (pool->num_clients == 0)
+        {
+            free(pool->clients);
+            pool->clients = NULL;
+        }
+        return;
+    }
 }

@@ -1,40 +1,70 @@
 #include "health_check_handler.h"
 
-/* if a worker is unresponsive for 15 seconds mark it offline and remove job */
+#include <errno.h>
 
+static int wait_for_semaphore(sem_t* semaphore)
+{
+    int result;
+    do {
+        result = sem_wait(semaphore);
+    } while (result == -1 && errno == EINTR);
+    return result;
+}
+
+/* Mark stale workers offline and requeue any job they were processing. */
 void* health_check(void* arg)
 {
-    sleep(5);
+    (void)arg;
 
     while (true)
     {
-        int i;
-        
-        sem_wait(&worker_mutex);
-        
-        for (i = 0 ; i < worker_pool.num_workers ; i++)
+        sleep(1);
+
+        if (wait_for_semaphore(&worker_mutex) == -1)
+            continue;
+
+        for (int i = 0; i < worker_pool.num_workers; i++)
         {
-            if (time(NULL) - (worker_pool.workers[i].last_heartbeat) > 15)
+            struct Worker* worker = &worker_pool.workers[i];
+            if (worker->status == WORKER_OFFLINE ||
+                time(NULL) - worker->last_heartbeat <= 15)
+                continue;
+
+            int worker_fd = worker->fd;
+            if (worker->status == WORKER_IDLE)
+                sem_trywait(&workers_available);
+            worker->status = WORKER_OFFLINE;
+
+            if (wait_for_semaphore(&registry_mutex) == -1)
+                continue;
+
+            for (int job_index = 0; job_index < MAX_JOB_NUM; job_index++)
             {
+                struct Job* job = registry[job_index];
+                if (job == NULL || job->worker_fd != worker_fd ||
+                    job->status != JOB_IN_PROGRESS)
+                    continue;
 
-                sem_wait(&registry_mutex);
-
-                worker_pool.workers[i].status = WORKER_OFFLINE;
-                struct Job* job = find_job_by_worker_fd(registry,worker_pool.workers[i].fd);   
-                
-                if (job != NULL)
+                if (wait_for_semaphore(&empty) == -1)
+                    break;
+                if (wait_for_semaphore(&queue_mutex) == -1)
                 {
-                    sem_wait(&queue_mutex);
-                    job->status = JOB_PENDING;
-                    enqueue(&job_queue,job); 
-                    sem_post(&queue_mutex);
-                
-                }                
-               
-                sem_post(&registry_mutex);
-            
+                    sem_post(&empty);
+                    break;
+                }
+
+                job->status = JOB_PENDING;
+                job->worker_fd = -1;
+                enqueue(&job_queue, job);
+                sem_post(&queue_mutex);
+                sem_post(&full);
             }
+
+            sem_post(&registry_mutex);
         }
+
         sem_post(&worker_mutex);
     }
+
+    return NULL;
 }
