@@ -11,12 +11,30 @@ Clients submit jobs to a central broker. The broker queues them and assigns them
 ## Architecture
 
 ```text
-Client(s) --TCP--> Broker --TCP--> Worker parent process
-                      |                    |  pipe
-                      |                    v
-                      |              Worker child process
-                      |<-- result/heartbeat-|
-                      +-- ncurses dashboard
++----------------------+        TCP requests / responses        +-----------------------------+
+| CLIENT PROCESS       | <====================================> | BROKER PROCESS              |
+| UI/main thread       |   SUBMIT, STATUS, ACK, status,         | Main accept loop            |
+| Notification thread  |   and completion notifications        | Dispatcher thread           |
++----------------------+                                         | Health-check thread         |
+                                                                 | Dashboard thread            |
+                                                                 | Client/worker handler threads|
+                                                                 +--------------+--------------+
+                                                                                | TCP: JOB
+                                                                                v
+                                                                 +-----------------------------+
+                                                                 | WORKER PARENT PROCESS       |
+                                                                 | Main thread receives jobs   |
+                                                                 | Heartbeat thread            |
+                                                                 +--------------+--------------+
+                                                                                | pipe: forward job
+                                                                                v
+                                                                 +-----------------------------+
+                                                                 | WORKER CHILD PROCESS        |
+                                                                 | Executes one job at a time  |
+                                                                 +-----------------------------+
+
+Worker parent -- TCP: HEARTBEAT ------> Broker
+Worker child  -- TCP: DONE / FAILED --> Broker
 ```
 
 ### Components
@@ -40,7 +58,12 @@ Messages are newline-terminated after the initial six-byte `CLIENT` or `WORKER` 
 
 ## Concurrency and Synchronization
 
-The broker starts three background threads: a dispatcher, a health checker, and the ncurses dashboard. It creates a detached handler thread for each accepted client or worker connection. The worker parent also starts a heartbeat thread while its child process handles jobs.
+This project uses **both multithreading and multiprocessing**. They serve different purposes:
+
+- **Broker multithreading:** The broker's main thread accepts connections. Three background threads run the dispatcher, health checker, and ncurses dashboard. Each connected client and worker is handled by its own detached thread, so socket handling can proceed while the background services run.
+- **Client multithreading:** The client UI runs on the main thread while a notification-listener thread reads broker responses and completion notifications.
+- **Worker multithreading:** Each worker's parent process starts a heartbeat thread while its main thread receives jobs from the broker and forwards them to the child.
+- **Worker multiprocessing:** Each worker calls `fork()` to create a child process. The parent sends job payloads to the child through a pipe. The child simulates job execution and sends `DONE` or `FAILED` results to the broker over TCP. The child is persistent and processes its jobs sequentially; multiple worker instances allow different jobs to run at the same time.
 
 POSIX semaphores coordinate access to the queue, job registry, worker pool, client pool, and log queue. The `empty` and `full` semaphores track available queue slots and queued jobs; `workers_available` tracks idle workers. Mutex-like semaphores protect shared structures while they are read or updated.
 
