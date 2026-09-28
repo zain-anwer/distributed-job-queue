@@ -1,4 +1,4 @@
-<div align="center">
+<div>
 
 # Distributed Job Queue
 
@@ -11,30 +11,110 @@ Clients submit jobs to a central broker. The broker queues them and assigns them
 ## Architecture
 
 ```text
-+----------------------+        TCP requests / responses        +-----------------------------+
-| CLIENT PROCESS       | <====================================> | BROKER PROCESS              |
-| UI/main thread       |   SUBMIT, STATUS, ACK, status,         | Main accept loop            |
-| Notification thread  |   and completion notifications        | Dispatcher thread           |
-+----------------------+                                         | Health-check thread         |
-                                                                 | Dashboard thread            |
-                                                                 | Client/worker handler threads|
-                                                                 +--------------+--------------+
-                                                                                | TCP: JOB
-                                                                                v
-                                                                 +-----------------------------+
-                                                                 | WORKER PARENT PROCESS       |
-                                                                 | Main thread receives jobs   |
-                                                                 | Heartbeat thread            |
-                                                                 +--------------+--------------+
-                                                                                | pipe: forward job
-                                                                                v
-                                                                 +-----------------------------+
-                                                                 | WORKER CHILD PROCESS        |
-                                                                 | Executes one job at a time  |
-                                                                 +-----------------------------+
-
-Worker parent -- TCP: HEARTBEAT ------> Broker
-Worker child  -- TCP: DONE / FAILED --> Broker
+╔══════════════════════════════════╗
+║              CLIENT              ║
+║                                  ║
+║   ┌──────────────────────────┐   ║
+║   │      Main UI Thread      │   ║
+║   │   Submit / Status / UI   │   ║
+║   └────────────┬─────────────┘   ║
+║                │                 ║
+║   ┌────────────▼─────────────┐   ║
+║   │    Notification Thread   │   ║
+║   │     Receive Results      │   ║
+║   └──────────────────────────┘   ║
+╚════════════════╤═════════════════╝
+                 │
+                 │ TCP
+                 │ SUBMIT / STATUS
+                 ▼
+╔════════════════════════════════════════════════╗
+║                     SERVER                     ║
+║                 JOB BROKER                     ║
+║                                                ║
+║   ┌──────────────────────────────────────────┐ ║
+║   │          Main Accept Thread              │ ║
+║   │      Accept CLIENT / WORKER sockets      │ ║
+║   └──────────────────┬───────────────────────┘ ║
+║                      │                         ║
+║             ┌────────┴────────┐                ║
+║             ▼                 ▼                ║
+║   ┌─────────────────┐ ┌─────────────────────┐  ║
+║   │ Client Handler  │ │  Worker Handler(s)  │  ║
+║   │     Thread(s)   │ │       Thread(s)     │  ║
+║   └────────┬────────┘ └──────────┬──────────┘  ║
+║            │                     │             ║
+║            ▼                     │             ║
+║   ┌──────────────────────┐       │             ║
+║   │      JOB QUEUE       │◄──────┘             ║
+║   │  ┌───┬───┬───┬───┐   │                     ║
+║   │  │ J1│ J2│ J3│ J4│   │                     ║
+║   │  └───┴───┴───┴───┘   │                     ║
+║   └──────────┬───────────┘                     ║
+║              │                                 ║
+║              ▼                                 ║
+║   ┌──────────────────────┐                     ║
+║   │   Dispatcher Thread  │                     ║
+║   │  Queue → Idle Worker │                     ║
+║   └──────────┬───────────┘                     ║
+║              │                                 ║
+║              │  selects worker                 ║
+║              ▼                                 ║
+║   ┌──────────────────────┐                     ║
+║   │   Health Check       │                     ║
+║   │   + Dashboard        │                     ║
+║   │   Background Threads │                     ║
+║   └──────────────────────┘                     ║
+╚══════════════╤═════════════════════════════════╝
+               │
+               │ TCP
+               │ JOB / HEARTBEAT / DONE / FAILED
+               │
+       ┌───────┴─────────────────────────────────────────┐
+       │                                                 │
+       ▼                                                 ▼
+╔═══════════════════════════╗                 ╔═══════════════════════════╗
+║          WORKER           ║                 ║          WORKER           ║
+║                           ║                 ║                           ║
+║  ┌─────────────────────┐  ║                 ║  ┌─────────────────────┐  ║
+║  │    PARENT PROCESS   │  ║                 ║  │    PARENT PROCESS   │  ║
+║  │                     │  ║                 ║  │                     │  ║
+║  │ TCP Communication   │  ║                 ║  │ TCP Communication   │  ║
+║  │ Heartbeat Thread    │  ║                 ║  │ Heartbeat Thread    │  ║
+║  └──────────┬──────────┘  ║                 ║  └──────────┬──────────┘  ║
+║             │             ║                 ║             │             ║
+║           PIPE            ║                 ║           PIPE            ║
+║             │             ║                 ║             │             ║
+║             ▼             ║                 ║             ▼             ║
+║  ┌─────────────────────┐  ║                 ║  ┌─────────────────────┐  ║
+║  │    CHILD PROCESS    │  ║                 ║  │    CHILD PROCESS    │  ║
+║  │                     │  ║                 ║  │                     │  ║
+║  │     EXECUTE JOB     │  ║                 ║  │     EXECUTE JOB     │  ║
+║  │                     │  ║                 ║  │                     │  ║
+║  └─────────────────────┘  ║                 ║  └─────────────────────┘  ║
+╚═══════════════════════════╝                 ╚═══════════════════════════╝
+       │                                                 │
+       │                    RESULT                       │
+       └────────────────────────┬────────────────────────┘
+                                │
+                                │ TCP
+                                │
+                                ▼
+                         ┌──────────────┐
+                         │    SERVER    │
+                         │              │
+                         │ Update Job   │
+                         │ Mark Worker  │
+                         │     IDLE     │
+                         └──────┬───────┘
+                                │
+                                │ TCP
+                                ▼
+                         ┌──────────────┐
+                         │    CLIENT    │
+                         │              │
+                         │ Show Result  │
+                         └──────────────┘
 ```
 
 ### Components
